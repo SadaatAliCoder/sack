@@ -35,7 +35,7 @@ Feeding entire source trees to LLMs (Claude, GPT-4o, Gemini, DeepSeek, Cursor) b
 Install directly from checkout or local clone:
 
 ```bash
-git clone https://github.com/your-username/sack.git
+git clone git clone https://github.com/SadaatAliCoder/sack.git
 cd sack
 python -m pip install .
 ```
