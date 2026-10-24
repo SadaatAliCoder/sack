@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sack-cli"
+version = "0.5.0"
+description = "Lightweight source-context extractor for AI-assisted software development"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Sadaqat Ali" }]
+
+[project.scripts]
+sack = "sack.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sack*"]
