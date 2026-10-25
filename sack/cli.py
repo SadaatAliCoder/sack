@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 IGNORED_DIRS = {
     ".git", ".hg", ".svn", ".idea", ".vscode", "__pycache__", ".mypy_cache",
@@ -76,6 +76,10 @@ GUARDRAILS = """# SACK AI Code Generation Guardrails
 ## JavaScript
 - Add JSDoc directly above exported functions/classes; include `@param` and `@returns`.
 - Prefer `const`, validate external input, and handle rejected promises.
+
+## Node.js & CommonJS
+- When using CommonJS, structure exports consistently with `module.exports = { ... }` or named `exports.handler`.
+- Prefer asynchronous non-blocking APIs (`fs/promises`, `async/await`) over synchronous blocking calls (`fs.readFileSync`).
 
 ## TypeScript
 - Explicitly type exported function parameters and return values.
@@ -472,8 +476,20 @@ def _other_extract(path: Path, source: str) -> dict[str, Any]:
         lang = next((key for key, vals in ext_groups.items() if ext in vals), "js")
 
     imports = {
-        "js": r"^(?:import\b|export\s+.*\sfrom\b|const\s+\w+\s*=\s*require\s*\()",
-        "ts": r"^(?:import\b|export\s+.*\sfrom\b|const\s+\w+\s*=\s*require\s*\()",
+        "js": (
+            r"^(?:import\b|export\s+.*\sfrom\b"
+            r"|(?:const|let|var)\s+(?:[\w$]+|\{[^}]*\})\s*=\s*(?:await\s+)?require\s*\("
+            r"|(?:const|let|var)\s+(?:[\w$]+|\{[^}]*\})\s*=\s*await\s+import\s*\("
+            r"|require\s*\("
+            r"|await\s+import\s*\()"
+        ),
+        "ts": (
+            r"^(?:import\b|export\s+.*\sfrom\b"
+            r"|(?:const|let|var)\s+(?:[\w$]+|\{[^}]*\})\s*=\s*(?:await\s+)?require\s*\("
+            r"|(?:const|let|var)\s+(?:[\w$]+|\{[^}]*\})\s*=\s*await\s+import\s*\("
+            r"|require\s*\("
+            r"|await\s+import\s*\()"
+        ),
         "rust": r"^(?:use\b|mod\s+\w+\s*;)",
         "cpp": r"^#include\b",
         "go": r"^(?:package\s+\w+|import\b)",
@@ -486,8 +502,8 @@ def _other_extract(path: Path, source: str) -> dict[str, Any]:
         "ruby": r"^(?:require\b|require_relative\b|include\b|extend\b)",
     }
     globals_patterns = {
-        "js": r"^(?:export\s+)?(?:const|let|var)\s+[\w$]+(?:\s*:\s*[^=;]+)?\s*=",
-        "ts": r"^(?:export\s+)?(?:declare\s+)?(?:const|let|var)\s+[\w$]+(?:\s*:\s*[^=;]+)?\s*=",
+        "js": r"^(?:export\s+)?(?:const|let|var)\s+(?:[\w$]+|\{[^}]*\})\s*(?::[^=]+)?\s*=",
+        "ts": r"^(?:export\s+)?(?:declare\s+)?(?:const|let|var)\s+(?:[\w$]+|\{[^}]*\})\s*(?::[^=]+)?\s*=",
         "rust": r"^(?:pub(?:\([^)]*\))?\s+)?(?:const|static)\s+\w+",
         "cpp": r"^(?:extern\s+)?(?:const\s+)?[\w:*&<>]+\s+\w+\s*(?:=|;)",
         "go": r"^(?:const|var)\s+\w+",
@@ -500,8 +516,18 @@ def _other_extract(path: Path, source: str) -> dict[str, Any]:
         "ruby": r"^(?:[A-Z]\w*|[$@]{1,2}\w+)\s*=",
     }
     declarations = {
-        "js": r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+[\w$]+\s*\(|^(?:export\s+)?(?:default\s+)?class\s+\w+|^(?:export\s+)?(?:const|let|var)\s+[\w$]+\s*(?::[^=]+)?=",
-        "ts": r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+[\w$]+\s*\(|^(?:export\s+)?(?:interface|type|enum|class)\s+\w+|^(?:export\s+)?(?:const|let|var)\s+[\w$]+\s*(?::[^=]+)?=",
+        "js": (
+            r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+[\w$]+\s*\("
+            r"|^(?:export\s+)?(?:default\s+)?class\s+\w+"
+            r"|^(?:export\s+)?(?:const|let|var)\s+[\w$]+\s*(?::[^=]+)?="
+            r"|^(?:module\.)?exports(?:\.[\w$]+)?\s*="
+        ),
+        "ts": (
+            r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+[\w$]+\s*\("
+            r"|^(?:export\s+)?(?:interface|type|enum|class)\s+\w+"
+            r"|^(?:export\s+)?(?:const|let|var)\s+[\w$]+\s*(?::[^=]+)?="
+            r"|^(?:module\.)?exports(?:\.[\w$]+)?\s*="
+        ),
         "rust": r"^(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+\w+|^(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait)\s+\w+",
         "cpp": r"^(?:template\s*<.*>|(?:[\w:*&<>\[\],]+\s+)+[*&]?\w+\s*\([^;]*\)\s*(?:const\s*)?(?:;|\{)?)|^(?:class|struct|enum)\s+\w+",
         "go": r"^func\s+(?:\([^)]*\)\s*)?\w+\s*\(|^type\s+\w+\s+(?:struct|interface)",
@@ -535,7 +561,15 @@ def _other_extract(path: Path, source: str) -> dict[str, Any]:
         ):
             comments.append(line)
             continue
-        if re.match(imports[lang], line):
+        is_js_ts_multiline_require = (
+            lang in {"js", "ts"}
+            and re.match(r"^(?:const|let|var)\s*\{", line)
+            and (
+                "require(" in " ".join(lines[index:min(index + 15, len(lines))])
+                or "import(" in " ".join(lines[index:min(index + 15, len(lines))])
+            )
+        )
+        if re.match(imports[lang], line) or is_js_ts_multiline_require:
             decl, consumed = _balanced_declaration(lines, index)
             result["imports"].append(decl)
             skip_until = index + consumed
@@ -611,9 +645,20 @@ def build_dependency_graph(files: dict[str, dict[str, Any]]) -> dict[str, list[s
         for imp in facts.get("imports", []):
             # Strip comments and quote delimiters to avoid matching arbitrary prose.
             clean = imp.strip()
-            match = re.search(r"(?:from\s+|import\s+|export\s+|part\s+|using\s+(?:static\s+)?|use\s+|require\s*\(\s*|=\s*['\"])(['\"]?)([\w./@$:-]+)", clean)
+            match = re.search(r"(?:from\s+|import\s+|import\s*\(\s*|export\s+|part\s+|using\s+(?:static\s+)?|use\s+|require\s*\(\s*|=\s*['\"])(['\"]?)([\w./@$:-]+)", clean)
             if match:
                 raw_mod = match.group(2).strip(".'\";")
+                # Direct relative resolution for Node.js / TS / Web (./ or ../)
+                clean_rel = match.group(2).strip("'\"`;")
+                if clean_rel.startswith(("./", "../")):
+                    try:
+                        resolved_norm = Path(os.path.normpath(Path(rel).parent / clean_rel)).as_posix().lower()
+                        for candidate, paths in candidates.items():
+                            if candidate == resolved_norm or candidate == resolved_norm.replace("/", "."):
+                                targets.update(p for p in paths if p != rel)
+                    except Exception:
+                        pass
+
                 # Handle path aliases like package:app_name/, crate::, $lib/, @/
                 module = re.sub(r"^(?:package:[\w-]+/|crate::|[$@]\w*/)", "", raw_mod)
                 normalized = module.replace("/", ".").replace("::", ".").lower()
@@ -629,9 +674,9 @@ def build_dependency_graph(files: dict[str, dict[str, Any]]) -> dict[str, list[s
                         or (stem and candidate == stem)
                     ):
                         targets.update(p for p in paths if p != rel)
-            # Rust paths and C includes can contain project-relative path fragments.
+            # Rust paths and C includes can contain project-relative path fragments (e.g. models/item or item.rs).
             for candidate, paths in candidates.items():
-                if candidate and candidate in clean.lower():
+                if candidate and ("/" in candidate or "." in candidate) and candidate in clean.lower():
                     targets.update(p for p in paths if p != rel)
         graph[rel] = sorted(targets)
     return graph

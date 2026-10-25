@@ -17,6 +17,10 @@
 - Add JSDoc directly above exported functions/classes; include `@param` and `@returns`.
 - Prefer `const`, validate external input, and handle rejected promises.
 
+## Node.js & CommonJS
+- When using CommonJS, structure exports consistently with `module.exports = { ... }` or named `exports.handler`.
+- Prefer asynchronous non-blocking APIs (`fs/promises`, `async/await`) over synchronous blocking calls (`fs.readFileSync`).
+
 ## TypeScript
 - Explicitly type exported function parameters and return values.
 - Use interfaces/type aliases for structured data; avoid unjustified `any`.

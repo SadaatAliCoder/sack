@@ -418,5 +418,80 @@ end
         self.assertEqual(res.stats["tokens"], 1200)
         self.assertEqual(res.stats["lines"], 80)
 
+    def test_nodejs_commonjs_and_esm_extraction(self):
+        source = """
+const express = require('express');
+const {
+  getUser,
+  createUser
+} = require('../controllers/userController');
+require('dotenv').config();
+const { PORT = 3000, DB_URL } = process.env;
+
+const router = express.Router();
+
+function authCheck(req, res, next) {
+  next();
+}
+
+exports.handler = async (event, context) => {
+  return { statusCode: 200, body: 'OK' };
+};
+
+exports.formatDate = function(date) {
+  return date.toISOString();
+};
+
+module.exports = {
+  router,
+  authCheck
+};
+"""
+        res = extract(Path("src/routes/auth.js"), source)
+
+        # Imports
+        self.assertTrue(any("const express = require('express');" in imp for imp in res["imports"]))
+        self.assertTrue(any("require('../controllers/userController')" in imp for imp in res["imports"]))
+        self.assertTrue(any("require('dotenv').config()" in imp for imp in res["imports"]))
+
+        # Globals
+        self.assertTrue(any("PORT = 3000" in g for g in res["globals"]))
+        self.assertTrue(any("const router = express.Router();" in g for g in res["globals"]))
+
+        # Signatures
+        self.assertTrue(any("function authCheck(req, res, next)" in s for s in res["signatures"]))
+        self.assertTrue(any("exports.handler = async (event, context) =>" in s for s in res["signatures"]))
+        self.assertTrue(any("exports.formatDate = function(date)" in s for s in res["signatures"]))
+        self.assertTrue(any("module.exports = { router, authCheck };" in s for s in res["signatures"]))
+
+    def test_nodejs_relative_dependency_graph(self):
+        files = {
+            "src/controllers/userController.js": {
+                "imports": [
+                    "const User = require('../models/user');",
+                    "const { sendEmail } = require('../services/emailService');",
+                ]
+            },
+            "src/models/user.js": {
+                "imports": [
+                    "const db = require('../db');",
+                ]
+            },
+            "src/services/emailService.js": {"imports": []},
+            "src/db/index.js": {"imports": []},
+            "src/routes/auth.js": {
+                "imports": [
+                    "const express = require('express');",
+                    "const { getUser, createUser } = require('../controllers/userController');",
+                ]
+            },
+        }
+        graph = build_dependency_graph(files)
+        # Verify accurate relative resolution
+        self.assertEqual(graph["src/controllers/userController.js"], ["src/models/user.js", "src/services/emailService.js"])
+        self.assertEqual(graph["src/models/user.js"], ["src/db/index.js"])
+        # Ensure 'src/routes/auth.js' does NOT falsely match 'src/models/user.js' because of 'getUser'
+        self.assertEqual(graph["src/routes/auth.js"], ["src/controllers/userController.js"])
+
 if __name__ == "__main__":
     unittest.main()

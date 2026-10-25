@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
-[![Version](https://img.shields.io/badge/version-0.5.0-orange.svg)](#)
+[![Version](https://img.shields.io/badge/version-0.5.1-orange.svg)](#)
 
 A zero-runtime-dependency CLI that builds a **compact, high-density structural context index** for AI-assisted software development.
 
